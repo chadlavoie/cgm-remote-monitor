@@ -327,3 +327,83 @@ describe('env', function () {
     } );
   } );
 })
+
+var assert = require('assert');
+var configure = require('../lib/server/env');
+var compat = require('../lib/server/bridge-connect-compat');
+var bridge = require('../lib/plugins/bridge');
+
+describe('Dexcom credential environment settings', function () {
+  var savedEnv;
+
+  beforeEach(function () {
+    savedEnv = { ...process.env };
+    Object.keys(process.env).forEach(function (key) { delete process.env[key]; });
+    process.env.ENABLE = 'connect bridge';
+  });
+
+  afterEach(function () {
+    Object.keys(process.env).forEach(function (key) { delete process.env[key]; });
+    Object.assign(process.env, savedEnv);
+  });
+
+  ['', 'CUSTOMCONNSTR_', 'customconnstr_'].forEach(function (prefix) {
+    ['+15555550123', '00123456789', '0000', '0', 'true', 'false', 'on', 'off', 'user@example.com'].forEach(function (credential) {
+      it('preserves ' + JSON.stringify(credential) + ' with prefix ' + JSON.stringify(prefix), function () {
+        ['CONNECT_SHARE_ACCOUNT_NAME', 'CONNECT_SHARE_PASSWORD', 'BRIDGE_USER_NAME', 'BRIDGE_PASSWORD'].forEach(function (key) {
+          process.env[prefix + (prefix === 'customconnstr_' ? key.toLowerCase() : key)] = credential;
+        });
+
+        var env = configure();
+        assert.strictEqual(env.extendedSettings.connect.shareAccountName, credential);
+        assert.strictEqual(env.extendedSettings.connect.sharePassword, credential);
+        assert.strictEqual(bridge.options(env).login.accountName, credential);
+        assert.strictEqual(bridge.options(env).login.password, credential);
+      });
+    });
+  });
+
+  it('preserves legacy credentials when migrating to Connect', function () {
+    process.env.ENABLE = 'bridge';
+    process.env.BRIDGE_USER_NAME = '+15555550123';
+    process.env.BRIDGE_PASSWORD = '0000';
+    var env = configure();
+    assert.strictEqual(compat.applyBridgeToConnectCompatibility(env).migrated, true);
+    assert.strictEqual(env.extendedSettings.connect.shareAccountName, '+15555550123');
+    assert.strictEqual(env.extendedSettings.connect.sharePassword, '0000');
+  });
+
+  it('continues to parse non-credential numeric and boolean settings', function () {
+    process.env.BRIDGE_INTERVAL = '60000';
+    process.env.BRIDGE_USE_LEGACY = 'true';
+    process.env.CONNECT_SHARE_MAX_COUNT = '12';
+    var env = configure();
+    assert.strictEqual(env.extendedSettings.bridge.interval, 60000);
+    assert.strictEqual(env.extendedSettings.bridge.useLegacy, true);
+    assert.strictEqual(env.extendedSettings.connect.shareMaxCount, 12);
+  });
+
+  it('sends string credentials in the Dexcom authentication and session requests', async function () {
+    process.env.CONNECT_SHARE_ACCOUNT_NAME = '+15555550123';
+    process.env.CONNECT_SHARE_PASSWORD = '0000';
+    var settings = configure().extendedSettings.connect;
+    var requests = [];
+    var source = require('nightscout-connect/lib/sources/dexcomshare')(settings, {
+      create: function () {
+        return {
+          post: function (url, body) {
+            requests.push(body);
+            return Promise.resolve({ data: 'mock-account-id' });
+          }
+        };
+      }
+    });
+    var account = await source.authFromCredentials();
+    await source.sessionFromAuth(account);
+    assert.strictEqual(requests.length, 2);
+    assert.strictEqual(requests[0].accountName, '+15555550123');
+    assert.strictEqual(requests[0].password, '0000');
+    assert.strictEqual(requests[1].password, '0000');
+    assert.strictEqual(requests[1].accountId, 'mock-account-id');
+  });
+});
