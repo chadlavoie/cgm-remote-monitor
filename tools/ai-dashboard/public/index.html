@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nightscout • After Hours</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="eyebrow">NIGHTSCOUT / AN OPTIONAL COMPANION</span>
+        <h1>After Hours<span> Your graph has stories.</span></h1>
+        <p>
+          Three hours of data. A little perspective. Perhaps a tiny fictional
+          mountain.
+        </p>
+      </header>
+      <section class="toolbar">
+        <label
+          >Dashboard access token<input
+            id="token"
+            type="password"
+            autocomplete="off"
+            placeholder="Only needed when configured" /></label
+        ><label
+          >Data source<select id="mode">
+            <option value="demo">Synthetic demo</option>
+            <option value="real">My Nightscout</option>
+          </select></label
+        ><button id="load">Load three-hour window</button>
+      </section>
+      <p id="status" role="status" aria-live="polite">
+        Start with synthetic data — no Nightscout or AI requests.
+      </p>
+      <section class="panel">
+        <div class="heading">
+          <h2>The last three hours</h2>
+          <span id="badge">SYNTHETIC DEMO</span>
+        </div>
+        <p id="stats"></p>
+        <svg
+          id="graph"
+          viewBox="0 0 900 220"
+          role="img"
+          aria-label="Glucose readings over three hours"
+        ></svg>
+        <p class="muted">
+          Glucose in mg/dL · timestamps displayed in your browser’s timezone ·
+          no treatment recommendations
+        </p>
+        <details>
+          <summary>Inspect the exact chronological data context</summary>
+          <pre id="context">Load a window to inspect it.</pre>
+        </details>
+      </section>
+      <div class="columns">
+        <section class="panel">
+          <h2>Ask the graph</h2>
+          <label
+            >Response style<select id="style">
+              <option value="observations">Interesting observations</option>
+              <option value="humor">Gentle graph comedy</option>
+              <option value="fiction">Fictional expedition</option>
+            </select></label
+          ><label
+            >Your question<textarea id="question" maxlength="1000" rows="3">
+What is the most interesting shape in this window?</textarea
+            ></label
+          ><label
+            >Engine<select id="engine">
+              <option value="offline">
+                Offline demonstration (canned replies)
+              </option>
+              <option value="external">External AI provider</option>
+            </select></label
+          ><label
+            >Text model<select id="model">
+              <option value="">Configure AI_MODELS on the server</option>
+            </select></label
+          >
+          <p id="provider" class="muted"></p>
+          <label class="check"
+            ><input id="consent" type="checkbox" />For this loaded window, I
+            consent to sending the displayed data context and my question to the
+            configured text provider, or the displayed art prompt to the image
+            provider. My question may contain personal information.</label
+          ><button id="ask">Ask</button>
+          <article id="answer" aria-live="polite">
+            The narrator is waiting in the wings.
+          </article>
+          <p class="muted">
+            AI output may be inaccurate. This is descriptive entertainment,
+            never a basis for insulin dosing or medical decisions.
+          </p>
+        </section>
+        <section class="panel">
+          <h2>A landscape from your line</h2>
+          <label
+            >Art direction<select id="artStyle">
+              <option value="watercolor">Watercolor hills</option>
+              <option value="cosmic">Cosmic horizon</option>
+              <option value="woodcut">Woodcut landscape</option>
+            </select></label
+          >
+          <div
+            id="art"
+            role="img"
+            aria-label="Decorative landscape preview"
+          ></div>
+          <p id="caption">
+            An offline procedural preview is available without an AI key.
+          </p>
+          <details>
+            <summary>Inspect image-provider prompt</summary>
+            <pre id="artPrompt"></pre>
+          </details>
+          <div class="actions">
+            <button id="artButton">Create wall art</button
+            ><button id="regenerate" class="secondary">Regenerate</button>
+          </div>
+          <p class="muted">
+            External generation sends only the art prompt: numeric glucose
+            sequence and art style. Regeneration bypasses the cache and consumes
+            another request reservation.
+          </p>
+        </section>
+      </div>
+      <footer>
+        Separate from your Nightscout monitoring, alarms, and treatment tools.
+        No automatic refresh or background AI calls.
+      </footer>
+    </main>
+  </body>
+</html>
