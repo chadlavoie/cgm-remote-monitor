@@ -83,6 +83,32 @@ input[type=number]:invalid {
   box-sizing: border-box;
 }
 
+#quickEvents p {
+  font-size: 13px;
+  margin-top: 0;
+}
+
+#quickEventButtons {
+  display: grid;
+  gap: 10px;
+}
+
+#quickEventButtons button {
+  text-align: left;
+  color: #222;
+}
+
+#quickEventButtons small {
+  display: block;
+  font-size: 12px;
+  font-weight: normal;
+}
+
+#treatmentDrawer button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
 #treatmentDrawer .left-column {
   display: block;
   width: 100%;

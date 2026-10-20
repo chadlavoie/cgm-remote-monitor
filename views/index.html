@@ -326,6 +326,11 @@
 
   <div id="treatmentDrawer">
     <form id="treatment-form">
+      <fieldset id="quickEvents">
+        <legend class="translate">Quick event</legend>
+        <p class="translate">One click logs the event immediately. Meals are logged now, with the bolus 20 minutes earlier.</p>
+        <div id="quickEventButtons"></div>
+      </fieldset>
       <fieldset class="treatmentData">
         <legend class="translate">Log a Treatment</legend>
         <label for="eventType" class="left-column">
@@ -472,7 +477,7 @@
           <input type="time" id="eventTimeValue" name="eventTimeValue" value="" class="eventinput eventtime">
         </div>
 
-        <button type="button" class="translate">Submit Form</button>
+        <button type="button" id="treatmentSubmit" class="translate">Submit Form</button>
       </fieldset>
     </form>
   </div>
