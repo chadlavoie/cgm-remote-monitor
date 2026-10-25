@@ -111,7 +111,7 @@ async function load() {
     }),
   );
   $("provider").textContent =
-    `Text: ${settings.textProvider || "not configured"}. Images: ${settings.imageProvider || "not configured"} (${settings.imageModel || "no model"}). Reservations: $${settings.textCost}/text, $${settings.imageCost}/image; $${settings.daily}/day limit.`;
+    `Text: ${settings.textProvider || "not configured"}. Images: ${settings.imageProvider || "not configured"} (${settings.imageModel || "no model"}; ${settings.imageAdapter}). Reservations: $${settings.textCost}/text, $${settings.imageCost}/image; $${settings.daily}/day limit.`;
   await artPreview();
   $("status").textContent =
     "Window loaded. Review the context before enabling external AI.";

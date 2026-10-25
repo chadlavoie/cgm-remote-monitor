@@ -28,6 +28,21 @@ export function config(env = process.env) {
       );
     return value.replace(/\/$/, "");
   };
+  const imageProvider = env.IMAGE_PROVIDER || "openai";
+  if (!["openai", "openrouter"].includes(imageProvider))
+    throw new Error("Invalid IMAGE_PROVIDER: use openai or openrouter");
+  const imageModalities = (env.IMAGE_MODALITIES || "image,text")
+    .split(",")
+    .map((x) => x.trim());
+  if (
+    !imageModalities.includes("image") ||
+    imageModalities.some((x) => !["image", "text"].includes(x)) ||
+    new Set(imageModalities).size !== imageModalities.length
+  )
+    throw new Error("Invalid IMAGE_MODALITIES: use image or image,text");
+  const imageMaxTokens = num("IMAGE_MAX_TOKENS", 8192, 1);
+  if (!Number.isInteger(imageMaxTokens) || imageMaxTokens > 32768)
+    throw new Error("Invalid IMAGE_MAX_TOKENS: use an integer from 1 to 32768");
   return {
     host: env.HOST || "127.0.0.1",
     port: num("PORT", 1340, 1),
@@ -41,6 +56,9 @@ export function config(env = process.env) {
       .split(",")
       .map((x) => x.trim())
       .filter(Boolean),
+    imageProvider,
+    imageModalities,
+    imageMaxTokens,
     imageBase: url(env.IMAGE_BASE_URL),
     imageKey: env.IMAGE_API_KEY || "",
     imageModel: env.IMAGE_MODEL || "",
@@ -223,6 +241,62 @@ export function artPrompt(ctx, style) {
     .map((x) => x.glucose);
   return `Create ${style} landscape wall art, no text, no medical symbols. Abstract contour inspired by this numeric sequence: ${points.join(",")}. This is decorative fiction, not a medical visualization.`;
 }
+// Accept inline raster data only. Never fetch a provider-supplied URL (including
+// redirects/loopback URLs), nor pass it through to the browser.
+function inlineImage(image, mime = "image/png") {
+  if (
+    typeof image !== "string" ||
+    !image.length ||
+    image.length > 14000000 ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(image)
+  )
+    throw new Error("Provider must return a base64 raster image");
+  const bytes = Buffer.from(image, "base64");
+  if (bytes.toString("base64").replace(/=+$/, "") !== image.replace(/=+$/, ""))
+    throw new Error("Provider must return valid base64 image data");
+  const valid = {
+    "image/png": bytes.subarray(0, 8).toString("hex") === "89504e470d0a1a0a",
+    "image/jpeg":
+      bytes.subarray(0, 3).toString("hex") === "ffd8ff" &&
+      bytes.subarray(-2).toString("hex") === "ffd9",
+    "image/webp":
+      bytes.subarray(0, 4).toString() === "RIFF" &&
+      bytes.subarray(8, 12).toString() === "WEBP" &&
+      bytes.length >= 20 &&
+      bytes.readUInt32LE(4) === bytes.length - 8,
+  };
+  if (!valid[mime])
+    throw new Error(
+      "Provider must return PNG, JPEG or WebP matching its MIME type",
+    );
+  return `data:${mime};base64,${bytes.toString("base64")}`;
+}
+function chatImage(data) {
+  const message = data?.choices?.[0]?.message;
+  // The documented OpenRouter shape is message.images[].image_url.url.
+  // Also accept image_url content parts from compatible chat services.
+  const images = Array.isArray(message?.images) ? message.images : [];
+  const parts = Array.isArray(message?.content)
+    ? message.content.filter((p) => p?.type === "image_url")
+    : [];
+  const first = [...images, ...parts][0];
+  if (!first)
+    throw new Error(
+      "Image provider returned no image; configure a model with image output support",
+    );
+  const url = first?.image_url?.url;
+  if (typeof url !== "string" || url.length > 14000100)
+    throw new Error(
+      "Provider must return an inline PNG, JPEG or WebP data URL",
+    );
+  const match =
+    /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(url);
+  if (!match)
+    throw new Error(
+      "Provider must return an inline PNG, JPEG or WebP data URL",
+    );
+  return inlineImage(match[2], match[1]);
+}
 export class Generator {
   constructor(c, fetcher = fetch) {
     this.c = c;
@@ -298,21 +372,36 @@ export class Generator {
               },
             ],
           }
-        : {
-            model: c.imageModel,
-            prompt: artPrompt(ctx, b.artStyle),
-            n: 1,
-            size: "1024x1024",
-            ...(c.legacyImageFormat
-              ? { response_format: "b64_json" }
-              : { output_format: "png", quality: "low" }),
-          };
+        : c.imageProvider === "openrouter"
+          ? {
+              model: c.imageModel,
+              messages: [{ role: "user", content: artPrompt(ctx, b.artStyle) }],
+              modalities: c.imageModalities,
+              max_tokens: c.imageMaxTokens,
+              stream: false,
+            }
+          : {
+              model: c.imageModel,
+              prompt: artPrompt(ctx, b.artStyle),
+              n: 1,
+              size: "1024x1024",
+              ...(c.legacyImageFormat
+                ? { response_format: "b64_json" }
+                : { output_format: "png", quality: "low" }),
+            };
     if (Buffer.byteLength(JSON.stringify(payload)) > 32768)
       throw new Error(
         "Data missing: context exceeds the 32 KiB request limit; narrow event collection before sending",
       );
+    const endpoint =
+      kind === "text"
+        ? c.base + "/chat/completions"
+        : c.imageBase +
+          (c.imageProvider === "openrouter"
+            ? "/chat/completions"
+            : "/images/generations");
     const key = createHash("sha256")
-      .update(JSON.stringify({ kind, mode: ctx.mode, payload }))
+      .update(JSON.stringify({ kind, mode: ctx.mode, endpoint, payload }))
       .digest("hex");
     const now = Date.now();
     for (const [k, v] of this.cache) if (v.until <= now) this.cache.delete(k);
@@ -326,8 +415,7 @@ export class Generator {
     try {
       const budget = this.budget.reserve(kind);
       const data = await jsonFetch(
-        (kind === "text" ? c.base : c.imageBase) +
-          (kind === "text" ? "/chat/completions" : "/images/generations"),
+        endpoint,
         {
           method: "POST",
           headers: {
@@ -338,6 +426,14 @@ export class Generator {
         },
         this.fetcher,
       );
+      if (
+        !data ||
+        typeof data !== "object" ||
+        data.error ||
+        data.choices?.[0]?.error ||
+        data.choices?.[0]?.finish_reason === "error"
+      )
+        throw new Error("Invalid provider response");
       let value;
       if (kind === "text") {
         const text = data.choices?.[0]?.message?.content;
@@ -345,19 +441,11 @@ export class Generator {
           throw new Error("Invalid provider response");
         value = { text };
       } else {
-        const image = data.data?.[0]?.b64_json;
-        if (
-          typeof image !== "string" ||
-          !image.length ||
-          image.length > 14000000 ||
-          !/^[A-Za-z0-9+/]+={0,2}$/.test(image)
-        )
-          throw new Error("Provider must return a base64 PNG image");
-        const bytes = Buffer.from(image, "base64");
-        if (bytes.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a")
-          throw new Error("Provider must return PNG");
         value = {
-          image: `data:image/png;base64,${image}`,
+          image:
+            c.imageProvider === "openrouter"
+              ? chatImage(data)
+              : inlineImage(data.data?.[0]?.b64_json),
           caption: "AI-generated decorative fiction",
         };
       }

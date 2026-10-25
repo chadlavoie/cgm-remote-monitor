@@ -67,6 +67,7 @@ export function createApp(c = config(), fetcher = fetch) {
             textProvider: c.base ? new URL(c.base).host : null,
             imageProvider: c.imageBase ? new URL(c.imageBase).host : null,
             imageModel: c.imageModel,
+            imageAdapter: c.imageProvider,
             daily: c.daily,
             textCost: c.textCost,
             imageCost: c.imageCost,
