@@ -13,6 +13,93 @@ security:
     token_in_url: []
     jwtoken: []
 paths:
+  '/cgm-observations':
+    post:
+      summary: Collect experimental BLE observations without changing live glucose
+      description: |
+        Requires api:cgm-observations:create and explicit authentication. The
+        cgm-shadow-upload role grants this permission. Stores immutable shadow
+        observations separately from entries for 30 days from first receipt.
+        Retry the same receiverId/observationId with unchanged contents. A batch
+        is validated before writing but is not a transaction; retry partial
+        failures with the same IDs. See docs/esp32-shadow-collection.md.
+      security:
+        - api_secret: []
+        - token_in_url: []
+        - jwtoken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/CgmObservation'
+                - type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    $ref: '#/components/schemas/CgmObservation'
+      responses:
+        '200':
+          description: Persisted; acknowledgements include receiverId, observationId and duplicate
+        '400':
+          description: Invalid observation payload
+        '401':
+          description: Authentication or create permission required
+        '409':
+          description: Observation ID already exists with different contents
+        '500':
+          description: Storage or index setup failed; retry with unchanged IDs
+    get:
+      summary: Inspect shadow observations, newest measurement first
+      description: Requires api:cgm-observations:read and explicit authentication, including on public sites.
+      security:
+        - api_secret: []
+        - token_in_url: []
+        - jwtoken: []
+      parameters:
+        - name: receiverId
+          in: query
+          schema:
+            type: string
+        - name: sensorSessionId
+          in: query
+          schema:
+            type: string
+        - name: since
+          in: query
+          description: Inclusive measurement time, epoch milliseconds
+          schema:
+            type: integer
+            format: int64
+        - name: until
+          in: query
+          description: Exclusive measurement time, epoch milliseconds
+          schema:
+            type: integer
+            format: int64
+        - name: count
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        '200':
+          description: Normalized observations with server-assigned _id, source, mode and receivedAt (ISO UTC)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '400':
+          description: Invalid or unsupported query parameters
+        '401':
+          description: Authentication or read permission required
+        '500':
+          description: Storage or index setup failed
   '/entries/{spec}':
     get:
       summary: All Entries matching query
@@ -672,6 +759,74 @@ components:
       description: Use this if you know the temporary json webtoken.
       bearerFormat: JWT
   schemas:
+    CgmObservation:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, receiverId, observationId, date, bleReceivedAt, sensorStatus]
+      properties:
+        schemaVersion:
+          type: integer
+          enum: [1]
+        receiverId:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'
+        observationId:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'
+        sensorSessionId:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'
+        sensorModel:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'
+        firmwareVersion:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'
+        date:
+          type: integer
+          format: int64
+          minimum: 946684800000
+          description: Sensor measurement epoch milliseconds; at most 10 minutes ahead of server time
+        bleReceivedAt:
+          type: integer
+          format: int64
+          minimum: 946684800000
+          description: BLE reception epoch milliseconds; at most 10 minutes ahead of server time
+        sgv:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 1000
+          description: mg/dL; required and non-null when sensorStatus is valid
+        sensorStatus:
+          type: string
+          enum: [valid, warmup, error, unavailable, unknown]
+        trendRate:
+          type: number
+          format: double
+          nullable: true
+          description: Sensor-reported rate, e.g. -0.5; unknown is null, not zero
+        trendRateUnit:
+          type: string
+          enum: [mg/dL/min]
+          description: Required when trendRate is numeric
+        direction:
+          type: string
+          enum: [NONE, DoubleUp, SingleUp, FortyFiveUp, Flat, FortyFiveDown, SingleDown, DoubleDown, NOT COMPUTABLE, RATE OUT OF RANGE]
+        rssi:
+          type: integer
+          minimum: -127
+          maximum: 20
+        sequence:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
+        receiverUptimeMs:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9007199254740991
     Entry:
       properties:
         type:

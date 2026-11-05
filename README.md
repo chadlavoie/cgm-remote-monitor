@@ -205,6 +205,10 @@ The Nightscout API enables direct access to your data without the need for Mongo
 You can find CGM data in `/api/v1/entries`, Care Portal Treatments in `/api/v1/treatments`, and Treatment Profiles in `/api/v1/profile`.
 The server status and settings are available from `/api/v1/status.json`.
 
+Experimental ESP32 BLE receivers can upload isolated observations to
+`/api/v1/cgm-observations` without changing live glucose data. See the
+[shadow collection setup and firmware contract](docs/esp32-shadow-collection.md).
+
 By default the `/entries` and `/treatments` APIs limit results to the the most recent 10 values from the last 2 days.
 You can get many more results, by using the `count`, `date`, `dateString`, and `created_at` parameters, depending on the type of data you're looking for.
 

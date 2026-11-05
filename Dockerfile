@@ -1,4 +1,5 @@
-FROM node:22-alpine AS builder
+# Node 22.23.4 includes the Brotli decoder fix for CVE-2026-111497.
+FROM node:22.23.4-alpine AS builder
 
 LABEL maintainer="Nightscout Contributors"
 
@@ -21,7 +22,7 @@ RUN npm ci --cache /tmp/empty-cache --omit=optional --force && \
   npm prune --omit=dev --omit=optional && \
   rm -rf /tmp/*
 
-FROM node:22-alpine AS runtime
+FROM node:22.23.4-alpine AS runtime
 
 LABEL maintainer="Nightscout Contributors"
 
